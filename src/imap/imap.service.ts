@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import ImapClient from 'emailjs-imap-client';
 import { ConfigService } from '../shared/config.service';
-import { EmailMessage, EmailFlags, EmailBodyStructure } from './imap.models';
+import { EmailMessage, EmailFlags, EmailBodyStructure, EmailChain } from './imap.models';
 @Injectable()
 export class ImapService {
   client: any;
@@ -42,20 +42,54 @@ export class ImapService {
     }
   }
 
-  async getEmails(config?: EmailGetConfig): Promise<EmailMessage[]> {
+  async getEmails(config?: EmailGetConfig): Promise<EmailMessage[][]> {
     if (!this.client) {
       await this.connect();
     }
-
     let data = await this.client.listMessages(
       'INBOX',
       `${config ? config.start : 1}:${config ? config.end : 10}`,
       ['uid', 'flags', 'envelope', 'bodystructure'],
     );
     data = await this.parseMessages(data, config && config.withBody);
-    return data;
+    const chains = this.findEmailChains(data);
+    return chains;
   }
 
+  findEmailChains(messages: EmailMessage[]): EmailMessage[][] {
+    let chains: EmailMessage[][] = [];
+    for(let i = 0; i < messages.length; i++) {
+      const message = messages[i];
+      const chainIndex = chains.findIndex(x => 
+        x ? !!x.find(y => 
+                     y.envelope["in-reply-to"] === message.envelope["message-id"] || 
+                     y.envelope["message-id"] === message.envelope["in-reply-to"]) 
+          : false
+      );
+      const filteredMessages = messages.filter(y => 
+                     y.envelope["in-reply-to"] === message.envelope["message-id"] || 
+                     y.envelope["message-id"] === message.envelope["in-reply-to"]);
+      if (chainIndex !== -1) {
+        if (!filteredMessages.find(x => x.envelope["message-id"] == message.envelope["message-id"])) {
+          chains[chainIndex].push(message);
+        }
+      } else {
+        chains.push([...filteredMessages, message]);
+      }
+    }
+    chains = chains.map(chain => {
+      let c: EmailMessage[] = [];
+      chain.forEach(x => {
+        if (!c.find(y => y.uid === x.uid)) {
+          c.push(x);
+        }
+      })
+      chain = c.sort((a, b) => b["#"] - a["#"]);
+      return chain;
+    });
+    return chains;
+  }
+  
   async getEmailBody(config: EmailGetConfig): Promise<string> {
     let data = await this.client.listMessages(
       'INBOX',
@@ -71,7 +105,7 @@ export class ImapService {
   async parseMessages(messages: EmailMessage[], withBody: boolean): Promise<EmailMessage[]> {
     for (var i = 0; i < messages.length; i++) {
       let message = messages[i];
-      message = this.parseFlags(message)
+      message = this.parseFlags(message);
       if (withBody) {
         message = await this.retrieveBody(message);
       }

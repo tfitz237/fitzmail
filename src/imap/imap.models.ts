@@ -24,6 +24,7 @@ export type EmailMessageEnvelope = {
     cc: EmailContact[];
     'reply-to': EmailContact[];
     'message-id': string;
+    'in-reply-to': string;
 }
 
 export type EmailContact = {
