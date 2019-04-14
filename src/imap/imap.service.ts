@@ -11,7 +11,33 @@ export class ImapService {
     this.connect();
   }
 
-  async connect() {
+  async getEmails(config?: EmailGetConfig): Promise<EmailMessage[][]> {
+    if (!this.client) {
+      await this.connect();
+    }
+    let data = await this.client.listMessages(
+      'INBOX',
+      `${config ? config.start : 1}:${config ? config.end : 10}`,
+      [EmailQueries.uid, EmailQueries.flags, EmailQueries.envelope, EmailQueries.bodyStructure],
+    );
+    data = await this.parseMessages(data, config && config.withBody);
+    const chains = this.findEmailChains(data);
+    return chains;
+  }
+
+  async getEmailBody(config: EmailGetConfig): Promise<string> {
+    let data = await this.client.listMessages(
+      'INBOX',
+      config.uid,
+      [EmailQueries.uid, EmailQueries.flags, EmailQueries.envelope, EmailQueries.bodyStructure],
+      {byUid: true}
+    );
+    data = data[0];
+    data = await this.retrieveBody(data);
+    return data.body[0];
+  }
+
+  private async connect() {
     if (this.connected) {
       return;
     }
@@ -34,29 +60,7 @@ export class ImapService {
     }
   }
 
-  async readyInbox() {
-    try {
-      return this.client.listMailboxes();
-    } catch (e) {
-      throw e;
-    }
-  }
-
-  async getEmails(config?: EmailGetConfig): Promise<EmailMessage[][]> {
-    if (!this.client) {
-      await this.connect();
-    }
-    let data = await this.client.listMessages(
-      'INBOX',
-      `${config ? config.start : 1}:${config ? config.end : 10}`,
-      ['uid', 'flags', 'envelope', 'bodystructure'],
-    );
-    data = await this.parseMessages(data, config && config.withBody);
-    const chains = this.findEmailChains(data);
-    return chains;
-  }
-
-  findEmailChains(messages: EmailMessage[]): EmailMessage[][] {
+  private findEmailChains(messages: EmailMessage[]): EmailMessage[][] {
     let chains: EmailMessage[][] = [];
     for(let i = 0; i < messages.length; i++) {
       const message = messages[i];
@@ -89,20 +93,8 @@ export class ImapService {
     });
     return chains;
   }
-  
-  async getEmailBody(config: EmailGetConfig): Promise<string> {
-    let data = await this.client.listMessages(
-      'INBOX',
-      config.uid,
-      ['uid', 'flags', 'envelope', 'bodystructure'],
-      {byUid: true}
-    );
-    data = data[0];
-    data = await this.retrieveBody(data);
-    return data.body[0];
-  }
 
-  async parseMessages(messages: EmailMessage[], withBody: boolean): Promise<EmailMessage[]> {
+  private async parseMessages(messages: EmailMessage[], withBody: boolean): Promise<EmailMessage[]> {
     for (var i = 0; i < messages.length; i++) {
       let message = messages[i];
       message = this.parseFlags(message);
@@ -113,13 +105,13 @@ export class ImapService {
     return messages;
   }
 
-  async retrieveBody(message: EmailMessage) {
+  private async retrieveBody(message: EmailMessage) {
     const parts = this.findPartsWithType(message);
     if (parts && parts.length > 0) {
       const msg = await this.client.listMessages(
         'INBOX',
         message.uid,
-        ['uid', ...parts],
+        [EmailQueries.uid, ...parts],
         { byUid: true },
       );
       message.body = [];
@@ -128,7 +120,7 @@ export class ImapService {
     return message;
   }
 
-  parseFlags(message: EmailMessage): EmailMessage {
+  private parseFlags(message: EmailMessage): EmailMessage {
     const flags = message.flags;
     const attachments = message.bodystructure.childNodes 
                         ? this.flatten(message.bodystructure.childNodes).filter(x => !!x.disposition) 
@@ -143,7 +135,7 @@ export class ImapService {
     return message;
   }
 
-  parseText(text: string) {
+  private parseText(text: string) {
     const replacements = {
       '=': /=3D/g,
       '': [/=\r\n/g, /\r\n/g, /<!--\t-->/g],     
@@ -162,7 +154,7 @@ export class ImapService {
     return text;
   }
 
-  findPartsWithType(message: EmailMessage, type: string = 'text/html') {
+  private findPartsWithType(message: EmailMessage, type: string = 'text/html') {
     const rtn = [];
     let nodes = message.bodystructure.childNodes;
     if (message.bodystructure.type.includes(type)) {
@@ -177,7 +169,7 @@ export class ImapService {
     return rtn;
   }
 
-  flatten(arr: EmailBodyStructure[]): EmailBodyStructure[] {
+  private flatten(arr: EmailBodyStructure[]): EmailBodyStructure[] {
     return arr.reduce((flat, toFlatten) => {
       return flat.concat(
         Array.isArray(toFlatten.childNodes)
@@ -186,6 +178,13 @@ export class ImapService {
       );
     }, []);
   }
+}
+
+export const EmailQueries = {
+  uid: 'uid',
+  flags: 'flags',
+  envelope: 'envelope',
+  bodyStructure: 'bodystructure'
 }
 
 export interface Email {
@@ -203,3 +202,4 @@ export interface EmailGetConfig {
   end?: number;
   withBody?: boolean;
 }
+
