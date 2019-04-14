@@ -57,9 +57,21 @@ export class ImapService {
         `${config ? config.start : 1}:${config ? config.end : 10}`,
         ['uid', 'flags', 'envelope', 'bodystructure'],
       );
-      data = await this.parseMessages(data);
+      data = config && config.withBody ? await this.parseMessages(data) : data;
       resolve(data);
     });
+  }
+
+  async getEmailBody(config: EmailGetConfig) {
+    let data = await this.client.listMessages(
+      'INBOX',
+      config.uid,
+      ['uid', 'flags', 'envelope', 'bodystructure'],
+      {byUid: true}
+    );
+    data = data[0];
+    data = await this.parseBody(data);
+    return data.body[0];
   }
 
   async parseMessages(messages: any[]) {
@@ -74,7 +86,7 @@ export class ImapService {
 
   async parseBody(message: any) {
     return new Promise<string>(async (resolve, reject) => {
-      const parts = this.findPartsWithText(message.bodystructure.childNodes);
+      const parts = this.findPartsWithText(message);
       if (parts && parts.length > 0) {
         const msg = await this.client.listMessages(
           'INBOX',
@@ -82,7 +94,8 @@ export class ImapService {
           ['uid', ...parts],
           { byUid: true },
         );
-        parts.forEach(x => (message[x] = this.parseText(msg[0][x])));
+        message.body = [];
+        parts.forEach(x => (message.body.push(this.parseText(msg[0][x]))));
         resolve(message);
       } else {
         resolve(message);
@@ -93,7 +106,7 @@ export class ImapService {
   parseText(text: string) {
     const replacements = {
       '=': /=3D/g,
-      '': [/=\r\n/g, /\r\n/g],
+      '': [/=\r\n/g, /\r\n/g, /<!--\t-->/g],     
       "'": [/=E2=80=9C/g, /=E2=80=9D/g, /=E2=80=99/g, /&#39;/g],
       ' ': [/&nbsp;/g, /=C2=A0/g, /%20/g],
     };
@@ -109,14 +122,20 @@ export class ImapService {
     return text;
   }
 
-  findPartsWithText(nodes: any[]) {
-    if (!Array.isArray(nodes)) {
-      return nodes;
+  findPartsWithText(message: any) {
+    const rtn = [];
+    let nodes = message.bodystructure.childNodes;
+    if (message.bodystructure.type.includes('text/html')) {
+      rtn.push(`body[1]`);
     }
-    nodes = this.flatten(nodes);
-    return nodes
-      .filter(node => node.type.includes('text/html'))
-      .map(node => `body[${node.part}]`);
+
+    if (Array.isArray(nodes)) {    
+      this.flatten(nodes)
+          .filter(node => node.type.includes('text/html'))
+          .forEach(node => rtn.push(`body[${node.part}]`))
+    }
+    return rtn;
+
   }
 
   flatten(arr) {
@@ -138,8 +157,10 @@ export interface Email {
 }
 
 export interface EmailGetConfig {
+  uid?: string;
   from?: string;
   to?: string;
-  start: number;
-  end: number;
+  start?: number;
+  end?: number;
+  withBody?: boolean;
 }

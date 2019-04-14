@@ -1,6 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Param, Res } from '@nestjs/common';
 import { AppService } from './app.service';
 import { ImapService } from './imap/imap.service';
+import { Response } from 'express';
 
 @Controller()
 export class AppController {
@@ -10,7 +11,13 @@ export class AppController {
   ) {}
 
   @Get()
-  async getHello(): Promise<any> {
+  async getEmails(): Promise<any> {
     return await this.imapService.getEmails();
+  }
+
+  @Get(':uid')
+  async getEmailBody(@Param('uid') uid: string, @Res() res: Response): Promise<any> {
+    const body = await this.imapService.getEmailBody({uid: uid});
+    res.send(body);
   }
 }
