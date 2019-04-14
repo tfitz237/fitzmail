@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import ImapClient from 'emailjs-imap-client';
-import * as utf8 from 'utf8';
 import { ConfigService } from '../shared/config.service';
+import { EmailMessage, EmailFlags, EmailBodyStructure } from './imap.models';
 @Injectable()
 export class ImapService {
   client: any;
@@ -11,58 +11,52 @@ export class ImapService {
     this.connect();
   }
 
-  async connect(): Promise<boolean> {
+  async connect() {
     if (this.connected) {
-      return Promise.resolve(true);
+      return;
     }
-
-    return new Promise<boolean>(async (resolve, reject) => {
-      this.client = new ImapClient(
-        this.configService.config.gmail.host,
-        this.configService.config.gmail.port,
-        {
-          auth: {
-            user: this.configService.config.gmail.user,
-            pass: this.configService.config.gmail.pass,
-          },
-          useSecureTransport: true,
+    this.client = new ImapClient(
+      this.configService.config.gmail.host,
+      this.configService.config.gmail.port,
+      {
+        auth: {
+          user: this.configService.config.gmail.user,
+          pass: this.configService.config.gmail.pass,
         },
-      );
-      this.client
-        .connect()
-        .then(() => {
-          this.connected = true;
-          resolve(true);
-        })
-        .catch(reject);
-    });
+        useSecureTransport: true,
+      },
+    );
+    try {
+      await this.client.connect();
+      this.connected = true;
+    } catch (e) {
+      this.connected = false;
+    }
   }
 
   async readyInbox() {
-    return new Promise<any>((resolve, reject) => {
-      this.client
-        .listMailboxes()
-        .then(resolve)
-        .catch(reject);
-    });
+    try {
+      return this.client.listMailboxes();
+    } catch (e) {
+      throw e;
+    }
   }
 
-  async getEmails(config?: EmailGetConfig) {
+  async getEmails(config?: EmailGetConfig): Promise<EmailMessage[]> {
     if (!this.client) {
       await this.connect();
     }
-    return new Promise<string[]>(async (resolve, reject) => {
-      let data = await this.client.listMessages(
-        'INBOX',
-        `${config ? config.start : 1}:${config ? config.end : 10}`,
-        ['uid', 'flags', 'envelope', 'bodystructure'],
-      );
-      data = config && config.withBody ? await this.parseMessages(data) : data;
-      resolve(data);
-    });
+
+    let data = await this.client.listMessages(
+      'INBOX',
+      `${config ? config.start : 1}:${config ? config.end : 10}`,
+      ['uid', 'flags', 'envelope', 'bodystructure'],
+    );
+    data = await this.parseMessages(data, config && config.withBody);
+    return data;
   }
 
-  async getEmailBody(config: EmailGetConfig) {
+  async getEmailBody(config: EmailGetConfig): Promise<string> {
     let data = await this.client.listMessages(
       'INBOX',
       config.uid,
@@ -70,37 +64,49 @@ export class ImapService {
       {byUid: true}
     );
     data = data[0];
-    data = await this.parseBody(data);
+    data = await this.retrieveBody(data);
     return data.body[0];
   }
 
-  async parseMessages(messages: any[]) {
-    return new Promise<any>(async (resolve, reject) => {
-      for (var i = 0; i < messages.length; i++) {
-        const message = messages[i];
-        messages[i] = await this.parseBody(message);
+  async parseMessages(messages: EmailMessage[], withBody: boolean): Promise<EmailMessage[]> {
+    for (var i = 0; i < messages.length; i++) {
+      let message = messages[i];
+      message = this.parseFlags(message)
+      if (withBody) {
+        message = await this.retrieveBody(message);
       }
-      resolve(messages);
-    });
+    }
+    return messages;
   }
 
-  async parseBody(message: any) {
-    return new Promise<string>(async (resolve, reject) => {
-      const parts = this.findPartsWithText(message);
-      if (parts && parts.length > 0) {
-        const msg = await this.client.listMessages(
-          'INBOX',
-          message.uid,
-          ['uid', ...parts],
-          { byUid: true },
-        );
-        message.body = [];
-        parts.forEach(x => (message.body.push(this.parseText(msg[0][x]))));
-        resolve(message);
-      } else {
-        resolve(message);
-      }
-    });
+  async retrieveBody(message: EmailMessage) {
+    const parts = this.findPartsWithType(message);
+    if (parts && parts.length > 0) {
+      const msg = await this.client.listMessages(
+        'INBOX',
+        message.uid,
+        ['uid', ...parts],
+        { byUid: true },
+      );
+      message.body = [];
+      parts.forEach(x => (message.body.push(this.parseText(msg[0][x]))));  
+    }
+    return message;
+  }
+
+  parseFlags(message: EmailMessage): EmailMessage {
+    const flags = message.flags;
+    const attachments = message.bodystructure.childNodes 
+                        ? this.flatten(message.bodystructure.childNodes).filter(x => !!x.disposition) 
+                        : [];
+    message.flag = { 
+      unread: !flags.find(x => x.toLowerCase().includes('seen')),
+      starred: !!flags.find(x => x.toLowerCase().includes('flagged')),
+      answered: !!flags.find(x => x.toLowerCase().includes('answered')),
+      hasAttachment: attachments.length > 0
+    };
+
+    return message;
   }
 
   parseText(text: string) {
@@ -122,23 +128,22 @@ export class ImapService {
     return text;
   }
 
-  findPartsWithText(message: any) {
+  findPartsWithType(message: EmailMessage, type: string = 'text/html') {
     const rtn = [];
     let nodes = message.bodystructure.childNodes;
-    if (message.bodystructure.type.includes('text/html')) {
+    if (message.bodystructure.type.includes(type)) {
       rtn.push(`body[1]`);
     }
 
     if (Array.isArray(nodes)) {    
       this.flatten(nodes)
-          .filter(node => node.type.includes('text/html'))
+          .filter(node => node.type.includes(type))
           .forEach(node => rtn.push(`body[${node.part}]`))
     }
     return rtn;
-
   }
 
-  flatten(arr) {
+  flatten(arr: EmailBodyStructure[]): EmailBodyStructure[] {
     return arr.reduce((flat, toFlatten) => {
       return flat.concat(
         Array.isArray(toFlatten.childNodes)
