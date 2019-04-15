@@ -1,3 +1,11 @@
+export type EmailChain = {
+    chain: EmailMessage[];
+    subject: string;
+    senders: string;
+    date: string;
+    attachments?: EmailBodyStructure[];
+};
+
 export type EmailMessage = {
     '#': number;
     uid: number;
@@ -6,6 +14,7 @@ export type EmailMessage = {
     bodystructure?: EmailBodyStructure;
     body?: string[];
     flag: EmailFlags;
+    attachments?: EmailBodyStructure[];
 };
 
 export type EmailFlags = {
@@ -21,10 +30,10 @@ export type EmailMessageEnvelope = {
     from: EmailContact[];
     to: EmailContact[];
     sender: EmailContact[];
-    cc: EmailContact[];
-    'reply-to': EmailContact[];
+    cc?: EmailContact[];
+    'reply-to'?: EmailContact[];
     'message-id': string;
-    'in-reply-to': string;
+    'in-reply-to'?: string;
 }
 
 export type EmailContact = {
@@ -43,6 +52,7 @@ export type EmailBodyStructure = {
     disposition?: string;
     dispositionParameters?: EmailBodyStructureParameters;
     childNodes?: EmailBodyStructure[];
+    selector: string;
 }
 
 export type EmailBodyStructureParameters = {
