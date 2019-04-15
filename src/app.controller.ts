@@ -16,8 +16,8 @@ export class AppController {
   }
 
   @Get(':uid')
-  async getEmailBody(@Param('uid') uid: string, @Res() res: Response): Promise<any> {
-    const body = await this.imapService.getEmailBody({uid: uid});
+  async getEmailBody(@Param('uid') uid: number, @Res() res: Response): Promise<any> {
+    const body = await this.imapService.getEmailBody({uid});
     res.send(body);
   }
 }

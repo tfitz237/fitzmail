@@ -4,6 +4,7 @@ export type EmailChain = {
     senders: string;
     date: string;
     attachments?: EmailBodyStructure[];
+    categories?: string[]
 };
 
 export type EmailMessage = {

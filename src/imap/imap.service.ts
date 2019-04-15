@@ -2,12 +2,13 @@ import { Injectable } from '@nestjs/common';
 import ImapClient from 'emailjs-imap-client';
 import { ConfigService } from '../shared/config.service';
 import { EmailMessage, EmailBodyStructure, EmailChain } from './imap.models';
+import { TextAnalysisService } from '../text-analysis/text-analysis.service';
 @Injectable()
 export class ImapService {
   client: any;
   connected: boolean = false;
   messages: [];
-  constructor(private readonly configService: ConfigService) {
+  constructor(private readonly configService: ConfigService, private readonly textAnalysisService: TextAnalysisService) {
     this.connect();
   }
 
@@ -36,7 +37,8 @@ export class ImapService {
 
   async getEmails(config: EmailGetConfig = {}): Promise<EmailChain[]> {
     const data = this.parseMessages(await this.retrieveEmails('INBOX', config.start, config.end));
-    const chains = this.findEmailChains(data);
+    let chains = this.findEmailChains(data);
+    //chains = await this.findCategories(chains);
     return chains;
   }
 
@@ -92,6 +94,7 @@ export class ImapService {
     }
     const rtn = chains.map(c => {
       c = c.filter((x,i) => c.indexOf(x) === i).sort((a, b) => b["#"] - a["#"]);
+      
       const senders = c.map(x => x.envelope.sender[0].name + '<' + x.envelope.sender[0].address + '>');
       const chain: EmailChain = {
         subject: c[c.length - 1].envelope.subject,
@@ -99,12 +102,22 @@ export class ImapService {
         senders: senders.filter((x,i) => senders.indexOf(x) === i).join(', '),
         attachments: [].concat(...c.filter(x => x.attachments).map(x => x.attachments)),
         chain: c
-      }
+      };
       return chain;
     });
     return rtn;
   }
 
+  private async findCategories(chains: EmailChain[]) {
+    for (let i = 0; i < chains.length; i++) {
+      const text = await this.retrieveBody(chains[i].chain[0]);
+      if (text && text.body && text.body[0]) {
+        chains[i].categories = await this.textAnalysisService.analyzeEmail(chains[i].subject, text.body[0]);
+      }
+      
+    }
+    return chains;
+  }
   private parseMessages(messages: EmailMessage[]): EmailMessage[] {
     for (var i = 0; i < messages.length; i++) {
       let message = messages[i];
