@@ -1,0 +1,11 @@
+<mat-list>
+  <ng-container *ngFor="let email of emails">
+    <mat-list-item>
+      <mat-icon matListIcon>mail</mat-icon> 
+      <h3 matLine> {{email.subject}} </h3>
+      <p matLine>
+        <span> {{email.senders}} </span>
+      </p>
+    </mat-list-item>
+  </ng-container> 
+</mat-list>
