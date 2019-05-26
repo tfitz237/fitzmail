@@ -1,7 +1,7 @@
 import { Controller, Body, Post } from '@nestjs/common';
 import { TextAnalysisService } from './text-analysis.service';
 
-@Controller('text-analysis')
+@Controller()
 export class TextAnalysisController {
     constructor(private readonly textAnalysisService: TextAnalysisService) {}
 

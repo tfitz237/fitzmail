@@ -1,12 +1,10 @@
 import { Controller, Get, Param, Res } from '@nestjs/common';
-import { AppService } from './app.service';
-import { ImapService } from './imap/imap.service';
+import { ImapService } from './imap.service';
 import { Response } from 'express';
 
 @Controller()
-export class AppController {
+export class ImapController {
   constructor(
-    private readonly appService: AppService,
     private readonly imapService: ImapService,
   ) {}
 
