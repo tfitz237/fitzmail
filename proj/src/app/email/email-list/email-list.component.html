@@ -1,11 +1,31 @@
-<mat-list>
+<div class="emails">
+<mat-list class="email-list" *ngIf=!selectedEmail>
   <ng-container *ngFor="let email of emails">
-    <mat-list-item>
-      <mat-icon matListIcon>mail</mat-icon> 
+    <mat-list-item style="cursor:pointer" (click)="viewEmail(email)">
+      <ng-container 
+        *ngIf="!email.selected && !email.showCheckbox">
+        <mat-icon matListIcon
+        (mouseenter)="email.showCheckbox = true"  
+        >mail</mat-icon> 
+      </ng-container>
+      <ng-container *ngIf="email.selected || email.showCheckbox">
+        <mat-checkbox 
+        [(ngModel)]="email.selected" 
+        (mouseleave)="email.showCheckbox = false"
+        ></mat-checkbox> 
+      </ng-container>
       <h3 matLine> {{email.subject}} </h3>
       <p matLine>
         <span> {{email.senders}} </span>
       </p>
     </mat-list-item>
   </ng-container> 
+
 </mat-list>
+<ng-container *ngIf="selectedEmail">
+  <button (click)="selectedEmail = false">X</button>
+  <iframe class="selected-email" [src]="getEmailUrl() | safe"class="selected-email">
+      
+    </iframe>
+</ng-container>
+</div>

@@ -5,6 +5,9 @@ import { RouterModule } from '@angular/router';
 import { HttpClientModule } from '@angular/common/http';
 import {MatListModule} from '@angular/material/list';
 import {MatIconModule} from '@angular/material/icon';
+import {MatCheckboxModule} from '@angular/material/checkbox';
+import { FormsModule } from '@angular/forms';
+import { SafePipe } from './safe.pipe';
 export const EmailRoutingModule = RouterModule.forChild([
   {
     path: '', component: EmailListComponent
@@ -12,13 +15,15 @@ export const EmailRoutingModule = RouterModule.forChild([
 ]);
 
 @NgModule({
-  declarations: [EmailListComponent],
+  declarations: [EmailListComponent, SafePipe],
   imports: [
     HttpClientModule,
     CommonModule,
+    FormsModule,
     EmailRoutingModule,
     MatListModule,
-    MatIconModule
+    MatIconModule,
+    MatCheckboxModule
   ]
 })
 export class EmailModule { }

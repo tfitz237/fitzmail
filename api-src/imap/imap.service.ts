@@ -62,15 +62,16 @@ export class ImapService {
 
   private async retrieveBody(message: EmailMessage): Promise<EmailMessage> {
     const parts = this.findPartsWithType(message);
+    parts.push(...this.findPartsWithType(message, 'text/plain'));
     if (parts && parts.length > 0) {
       const msg = await this.client.listMessages(
         'INBOX',
         message.uid,
-        [EmailQueries.uid, ...parts],
+        [EmailQueries.uid, ...parts.map(x => x[0])],
         { byUid: true },
       );
       message.body = [];
-      parts.forEach(x => (message.body.push(this.parseText(msg[0][x]))));  
+      parts.forEach(x => (message.body.push(this.parseText(msg[0][x[0]], x[1]))));  
     }
     return message;
   }
@@ -145,7 +146,10 @@ export class ImapService {
     return this.flatten(message.bodystructure.childNodes).filter(x => !!x.disposition);
   }
 
-  private parseText(text: string): string {
+  private parseText(text: string, type: string): string {
+    if (type == 'text/plain') {
+      return `<html><body><pre>${new Buffer(text, 'base64').toString()}</pre></body></html>`;
+    }
     Object.keys(emailEncodings).forEach(x => {
       if (Array.isArray(emailEncodings[x])) {
         emailEncodings[x].forEach(y => {
@@ -158,17 +162,17 @@ export class ImapService {
     return text;
   }
 
-  private findPartsWithType(message: EmailMessage, type: string = 'text/html'): string[] {
-    const rtn: string[] = [];
+  private findPartsWithType(message: EmailMessage, type: string = 'text/html'): [string, string][] {
+    const rtn: [string, string][] = [];
     let nodes = message.bodystructure.childNodes;
     if (message.bodystructure.type.includes(type)) {
-      rtn.push(`body[1]`);
+      rtn.push([`body[1]`, type]);
     }
 
     if (Array.isArray(nodes)) {    
       this.flatten(nodes)
           .filter(node => node.type.includes(type))
-          .forEach(node => rtn.push(node.selector))
+          .forEach(node => rtn.push([node.selector, type]))
     }
     return rtn;
   }
